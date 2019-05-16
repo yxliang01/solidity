@@ -23,6 +23,8 @@ using namespace std;
 using namespace dev;
 using namespace dev::solidity::smt;
 
+// TODO put thisAddress and balances in m_globalContext
+
 EncodingContext::EncodingContext(SolverInterface& _solver):
 	m_solver(_solver),
 	m_thisAddress(make_unique<SymbolicAddressVariable>("this", m_solver))
@@ -160,6 +162,11 @@ shared_ptr<SymbolicVariable> EncodingContext::globalSymbol(string const& _name)
 {
 	solAssert(knownGlobalSymbol(_name), "");
 	return m_globalContext.at(_name);
+}
+
+unordered_map<string, shared_ptr<SymbolicVariable>> const& EncodingContext::globalSymbols() const
+{
+	return m_globalContext;
 }
 
 bool EncodingContext::createGlobalSymbol(string const& _name, solidity::Expression const& _expr)

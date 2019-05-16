@@ -19,7 +19,7 @@
 
 
 #include <libsolidity/formal/EncodingContext.h>
-#include <libsolidity/formal/SolverInterface.h>
+#include <libsolidity/formal/SMTPortfolio.h>
 #include <libsolidity/formal/SymbolicVariables.h>
 #include <libsolidity/formal/VariableUsage.h>
 
@@ -43,17 +43,17 @@ namespace dev
 namespace solidity
 {
 
-class SMTChecker: private ASTConstVisitor
+class SMTChecker: protected ASTConstVisitor
 {
 public:
 	SMTChecker(langutil::ErrorReporter& _errorReporter, std::map<h256, std::string> const& _smtlib2Responses);
 
-	void analyze(SourceUnit const& _sources, std::shared_ptr<langutil::Scanner> const& _scanner);
+	virtual void analyze(SourceUnit const& _sources, std::shared_ptr<langutil::Scanner> const& _scanner);
 
 	/// This is used if the SMT solver is not directly linked into this binary.
 	/// @returns a list of inputs to the SMT solver that were not part of the argument to
 	/// the constructor.
-	std::vector<std::string> unhandledQueries() { return m_interface->unhandledQueries(); }
+	std::vector<std::string> unhandledQueries() { return m_interface.unhandledQueries(); }
 
 	/// @returns the FunctionDefinition of a called function if possible and should inline,
 	/// otherwise nullptr.
@@ -61,21 +61,36 @@ public:
 	/// @returns the leftmost identifier in a multi-d IndexAccess.
 	static Expression const* leftmostBase(IndexAccess const& _indexAccess);
 
-private:
+protected:
 	// TODO: Check that we do not have concurrent reads and writes to a variable,
 	// because the order of expression evaluation is undefined
 	// TODO: or just force a certain order, but people might have a different idea about that.
 
 	bool visit(ContractDefinition const& _node) override;
 	void endVisit(ContractDefinition const& _node) override;
-	void endVisit(VariableDeclaration const& _node) override;
-	bool visit(ModifierDefinition const& _node) override;
 	bool visit(FunctionDefinition const& _node) override;
 	void endVisit(FunctionDefinition const& _node) override;
-	bool visit(PlaceholderStatement const& _node) override;
 	bool visit(IfStatement const& _node) override;
 	bool visit(WhileStatement const& _node) override;
 	bool visit(ForStatement const& _node) override;
+
+	virtual void visitAssert(FunctionCall const& _funCall);
+
+	/// Visits a FunctionDefinition after encoding data structures being cleared.
+	void visitFunction(FunctionDefinition const& _function);
+
+	/// Resets the encoding data structures.
+	void resetEncoding(FunctionDefinition const& _function);
+
+	void addAssertion(smt::Expression const& _e);
+	smt::Expression assertions();
+	void push();
+	void pop();
+
+private:
+	void endVisit(VariableDeclaration const& _node) override;
+	bool visit(ModifierDefinition const& _node) override;
+	bool visit(PlaceholderStatement const& _node) override;
 	void endVisit(VariableDeclarationStatement const& _node) override;
 	void endVisit(Assignment const& _node) override;
 	void endVisit(TupleExpression const& _node) override;
@@ -108,7 +123,6 @@ private:
 	void compareOperation(BinaryOperation const& _op);
 	void booleanOperation(BinaryOperation const& _op);
 
-	void visitAssert(FunctionCall const& _funCall);
 	void visitRequire(FunctionCall const& _funCall);
 	void visitGasLeft(FunctionCall const& _funCall);
 	void visitTypeConversion(FunctionCall const& _funCall);
@@ -154,8 +168,10 @@ private:
 	/// Computes the right hand side of a compound assignment.
 	smt::Expression compoundAssignment(Assignment const& _assignment);
 
-	/// Maps a variable to an SSA index.
-	using VariableIndices = std::unordered_map<VariableDeclaration const*, int>;
+	/// Maps a symbolic variable to an SSA index.
+	using VariableIndices = std::unordered_map<ASTNode const*, int>;
+	/// Copy the SSA indices of m_variables.
+	VariableIndices copyVariableIndices() const;
 
 	/// Visits the branch given by the statement, pushes and pops the current path conditions.
 	/// @param _condition if present, asserts that this condition is true within the branch.
@@ -259,8 +275,6 @@ private:
 	/// Add to the solver: the given expression implied by the current path conditions
 	void addPathImpliedExpression(smt::Expression const& _e);
 
-	/// Copy the SSA indices of m_variables.
-	VariableIndices copyVariableIndices();
 	/// Resets the variable indices.
 	void resetVariableIndices(VariableIndices const& _indices);
 
@@ -270,7 +284,14 @@ private:
 	/// @returns the VariableDeclaration referenced by an Identifier or nullptr.
 	VariableDeclaration const* identifierToVariable(Expression const& _expr);
 
-	std::unique_ptr<smt::SolverInterface> m_interface;
+	/// Returns true if the current function was not visited by
+	/// a function call.
+	bool isRootFunction();
+	/// Returns true if _funDef was already visited.
+	bool visitedFunction(FunctionDefinition const* _funDef);
+
+private:
+	smt::SMTPortfolio m_interface;
 	smt::VariableUsage m_variableUsage;
 	bool m_loopExecutionHappened = false;
 	bool m_arrayAssignmentHappened = false;
@@ -283,22 +304,14 @@ private:
 	/// Used to retrieve models.
 	std::set<Expression const*> m_uninterpretedTerms;
 	std::vector<smt::Expression> m_pathConditions;
-	/// ErrorReporter that comes from CompilerStack.
-	langutil::ErrorReporter& m_errorReporterReference;
 	/// Local SMTChecker ErrorReporter.
 	/// This is necessary to show the "No SMT solver available"
 	/// warning before the others in case it's needed.
 	langutil::ErrorReporter m_errorReporter;
 	langutil::ErrorList m_smtErrors;
-	std::shared_ptr<langutil::Scanner> m_scanner;
 
 	/// Stores the current function/modifier call/invocation path.
 	std::vector<CallStackEntry> m_callStack;
-	/// Returns true if the current function was not visited by
-	/// a function call.
-	bool isRootFunction();
-	/// Returns true if _funDef was already visited.
-	bool visitedFunction(FunctionDefinition const* _funDef);
 
 	std::vector<OverflowTarget> m_overflowTargets;
 
@@ -308,8 +321,21 @@ private:
 	/// Needs to be a stack because of function calls.
 	std::vector<int> m_modifierDepthStack;
 
+	/// Keeps track of the added assertions.
+	std::vector<smt::Expression> m_assertions;
+
+protected:
+	/// ErrorReporter that comes from CompilerStack.
+	langutil::ErrorReporter& m_errorReporterReference;
+
 	/// Stores the context of the encoding.
 	smt::EncodingContext m_context;
+
+	/// Whether the SMTChecker should only generate the SMT encoding
+	/// or also perform checks.
+	bool m_encodingOnly = false;
+
+	std::shared_ptr<langutil::Scanner> m_scanner;
 };
 
 }

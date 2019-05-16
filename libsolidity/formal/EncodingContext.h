@@ -62,6 +62,7 @@ public:
 	void resetVariables(std::function<bool(solidity::VariableDeclaration const&)> const& _filter);
 	///Resets all variables.
 	void resetAllVariables();
+	void resetAllExpressions();
 
 	/// Allocates a new index for the declaration, updates the current
 	/// index to this value and returns the expression.
@@ -93,7 +94,7 @@ public:
 	/// Global variables and functions.
 	std::shared_ptr<SymbolicVariable> globalSymbol(std::string const& _name);
 	/// @returns all symbolic variables.
-	std::unordered_map<std::string, std::shared_ptr<SymbolicVariable>> const& globalSymbols() const { return m_globalContext; }
+	std::unordered_map<std::string, std::shared_ptr<SymbolicVariable>> const& globalSymbols() const;
 	/// Defines a new global variable or function
 	/// and @returns true if type was abstracted.
 	bool createGlobalSymbol(std::string const& _name, solidity::Expression const& _expr);

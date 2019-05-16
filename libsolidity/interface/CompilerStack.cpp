@@ -40,6 +40,7 @@
 #include <libsolidity/ast/TypeProvider.h>
 #include <libsolidity/codegen/Compiler.h>
 #include <libsolidity/formal/SMTChecker.h>
+#include <libsolidity/formal/CHCModel.h>
 #include <libsolidity/interface/ABI.h>
 #include <libsolidity/interface/Natspec.h>
 #include <libsolidity/interface/GasEstimator.h>
@@ -367,7 +368,12 @@ bool CompilerStack::analyze()
 			for (Source const* source: m_sourceOrder)
 				smtChecker.analyze(*source->ast, source->scanner);
 			m_unhandledSMTLib2Queries += smtChecker.unhandledQueries();
+
+			CHCModel chcModel(m_errorReporter, m_smtlib2Responses);
+			for (Source const* source: m_sourceOrder)
+				chcModel.analyze(*source->ast, source->scanner);
 		}
+
 	}
 	catch(FatalError const&)
 	{

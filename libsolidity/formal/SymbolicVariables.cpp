@@ -68,6 +68,11 @@ Expression SymbolicVariable::valueAtIndex(int _index) const
 	return m_interface.newVariable(uniqueSymbol(_index), m_sort);
 }
 
+string SymbolicVariable::nameAtIndex(int _index) const
+{
+	return uniqueSymbol(_index);
+}
+
 string SymbolicVariable::uniqueSymbol(unsigned _index) const
 {
 	return m_uniqueName + "_" + to_string(_index);
@@ -125,6 +130,17 @@ SymbolicFunctionVariable::SymbolicFunctionVariable(
 	m_declaration(m_interface.newVariable(currentName(), m_sort))
 {
 	solAssert(m_type->category() == solidity::Type::Category::Function, "");
+}
+
+SymbolicFunctionVariable::SymbolicFunctionVariable(
+	SortPointer _sort,
+	string _uniqueName,
+	SolverInterface& _interface
+):
+	SymbolicVariable(move(_sort), move(_uniqueName), _interface),
+	m_declaration(m_interface.newVariable(currentName(), m_sort))
+{
+	solAssert(m_sort->kind == Kind::Function, "");
 }
 
 void SymbolicFunctionVariable::resetDeclaration()
@@ -186,7 +202,9 @@ SymbolicTupleVariable::SymbolicTupleVariable(
 
 void SymbolicTupleVariable::setComponents(vector<shared_ptr<SymbolicVariable>> _components)
 {
-	solAssert(m_components.empty(), "");
+	if (!m_components.empty())
+		return;
+
 	auto const& tupleType = dynamic_cast<solidity::TupleType const*>(m_type);
 	solAssert(_components.size() == tupleType->components().size(), "");
 	m_components = move(_components);
