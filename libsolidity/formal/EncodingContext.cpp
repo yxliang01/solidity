@@ -23,15 +23,18 @@ using namespace std;
 using namespace dev;
 using namespace dev::solidity::smt;
 
-EncodingContext::EncodingContext(SolverInterface& _solver):
+// TODO put thisAddress and balances in m_globalContext
+
+EncodingContext::EncodingContext(shared_ptr<SolverInterface> _solver):
 	m_solver(_solver),
-	m_thisAddress(make_unique<SymbolicAddressVariable>("this", m_solver))
+	m_constraints(true),
+	m_thisAddress(make_shared<SymbolicAddressVariable>("this", *m_solver))
 {
 	auto sort = make_shared<ArraySort>(
 		make_shared<Sort>(Kind::Int),
 		make_shared<Sort>(Kind::Int)
 	);
-	m_balances = make_unique<SymbolicVariable>(sort, "balances", m_solver);
+	m_balances = make_shared<SymbolicVariable>(sort, "balances", *m_solver);
 }
 
 void EncodingContext::reset()
@@ -55,7 +58,7 @@ bool EncodingContext::createVariable(solidity::VariableDeclaration const& _varDe
 {
 	solAssert(!knownVariable(_varDecl), "");
 	auto const& type = _varDecl.type();
-	auto result = newSymbolicVariable(*type, _varDecl.name() + "_" + to_string(_varDecl.id()), m_solver);
+	auto result = newSymbolicVariable(*type, _varDecl.name() + "_" + to_string(_varDecl.id()), *m_solver);
 	m_variables.emplace(&_varDecl, result.second);
 	return result.first;
 }
@@ -105,7 +108,7 @@ void EncodingContext::setZeroValue(solidity::VariableDeclaration const& _decl)
 
 void EncodingContext::setZeroValue(SymbolicVariable& _variable)
 {
-	setSymbolicZeroValue(_variable, m_solver);
+	setSymbolicZeroValue(_variable, *m_solver);
 }
 
 void EncodingContext::setUnknownValue(solidity::VariableDeclaration const& _decl)
@@ -116,7 +119,7 @@ void EncodingContext::setUnknownValue(solidity::VariableDeclaration const& _decl
 
 void EncodingContext::setUnknownValue(SymbolicVariable& _variable)
 {
-	setSymbolicUnknownValue(_variable, m_solver);
+	setSymbolicUnknownValue(_variable, *m_solver);
 }
 
 /// Expressions
@@ -143,7 +146,7 @@ bool EncodingContext::createExpression(solidity::Expression const& _e, shared_pt
 	}
 	else
 	{
-		auto result = newSymbolicVariable(*_e.annotation().type, "expr_" + to_string(_e.id()), m_solver);
+		auto result = newSymbolicVariable(*_e.annotation().type, "expr_" + to_string(_e.id()), *m_solver);
 		m_expressions.emplace(&_e, result.second);
 		return result.first;
 	}
@@ -162,10 +165,15 @@ shared_ptr<SymbolicVariable> EncodingContext::globalSymbol(string const& _name)
 	return m_globalContext.at(_name);
 }
 
+unordered_map<string, shared_ptr<SymbolicVariable>> const& EncodingContext::globalSymbols() const
+{
+	return m_globalContext;
+}
+
 bool EncodingContext::createGlobalSymbol(string const& _name, solidity::Expression const& _expr)
 {
 	solAssert(!knownGlobalSymbol(_name), "");
-	auto result = newSymbolicVariable(*_expr.annotation().type, _name, m_solver);
+	auto result = newSymbolicVariable(*_expr.annotation().type, _name, *m_solver);
 	m_globalContext.emplace(_name, result.second);
 	setUnknownValue(*result.second);
 	return result.first;
@@ -174,6 +182,31 @@ bool EncodingContext::createGlobalSymbol(string const& _name, solidity::Expressi
 bool EncodingContext::knownGlobalSymbol(string const& _var) const
 {
 	return m_globalContext.count(_var);
+}
+
+// SSA indices
+
+EncodingContext::VariableIndices EncodingContext::copyVariableIndices() const
+{
+	VariableIndices indices;
+	for (auto const& var: m_variables)
+		indices.emplace(var.first, var.second->index());
+	for (auto const& expr: m_expressions)
+		indices.emplace(expr.first, expr.second->index());
+	return indices;
+}
+
+void EncodingContext::saveVariableIndices(ASTNode const* _node)
+{
+	m_ssaIndices[_node].push_back(copyVariableIndices());
+}
+
+// Context
+
+void EncodingContext::saveIntermediateContext(ASTNode const* _node)
+{
+	if (!m_intermediateContexts.count(_node))
+		m_intermediateContexts.insert({_node, make_shared<EncodingContext>(*this)});
 }
 
 // Blockchain
@@ -207,7 +240,7 @@ void EncodingContext::transfer(Expression _from, Expression _to, Expression _val
 		m_balances->valueAtIndex(indexBefore),
 		m_balances->valueAtIndex(indexAfter)
 	);
-	m_solver.addAssertion(m_balances->currentValue() == newBalances);
+	m_solver->addAssertion(m_balances->currentValue() == newBalances);
 }
 
 void EncodingContext::addBalance(Expression _address, Expression _value)
@@ -218,5 +251,5 @@ void EncodingContext::addBalance(Expression _address, Expression _value)
 		balance(_address) + move(_value)
 	);
 	m_balances->increaseIndex();
-	m_solver.addAssertion(newBalances == m_balances->currentValue());
+	m_solver->addAssertion(newBalances == m_balances->currentValue());
 }

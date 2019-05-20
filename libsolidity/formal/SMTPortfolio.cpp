@@ -43,18 +43,21 @@ SMTPortfolio::SMTPortfolio(map<h256, string> const& _smtlib2Responses)
 
 void SMTPortfolio::reset()
 {
+	m_assertions.clear();
 	for (auto const& s: m_solvers)
 		s->reset();
 }
 
 void SMTPortfolio::push()
 {
+	m_assertions.push_back(m_assertions.back());
 	for (auto const& s: m_solvers)
 		s->push();
 }
 
 void SMTPortfolio::pop()
 {
+	m_assertions.pop_back();
 	for (auto const& s: m_solvers)
 		s->pop();
 }
@@ -67,6 +70,11 @@ void SMTPortfolio::declareVariable(string const& _name, Sort const& _sort)
 
 void SMTPortfolio::addAssertion(Expression const& _expr)
 {
+	if (m_assertions.empty())
+		m_assertions.push_back(_expr);
+	else
+		m_assertions.back() = _expr && move(m_assertions.back());
+
 	for (auto const& s: m_solvers)
 		s->addAssertion(_expr);
 }

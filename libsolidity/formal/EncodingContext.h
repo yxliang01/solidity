@@ -36,7 +36,10 @@ namespace smt
 class EncodingContext
 {
 public:
-	EncodingContext(SolverInterface& _solver);
+	EncodingContext(std::shared_ptr<SolverInterface> _solver);
+
+	EncodingContext(EncodingContext const& _other) = default;
+	EncodingContext& operator=(EncodingContext const& _other) = default;
 
 	/// Resets the entire context.
 	void reset();
@@ -62,6 +65,7 @@ public:
 	void resetVariables(std::function<bool(solidity::VariableDeclaration const&)> const& _filter);
 	///Resets all variables.
 	void resetAllVariables();
+	void resetAllExpressions();
 
 	/// Allocates a new index for the declaration, updates the current
 	/// index to this value and returns the expression.
@@ -93,12 +97,47 @@ public:
 	/// Global variables and functions.
 	std::shared_ptr<SymbolicVariable> globalSymbol(std::string const& _name);
 	/// @returns all symbolic variables.
-	std::unordered_map<std::string, std::shared_ptr<SymbolicVariable>> const& globalSymbols() const { return m_globalContext; }
+	std::unordered_map<std::string, std::shared_ptr<SymbolicVariable>> const& globalSymbols() const;
 	/// Defines a new global variable or function
 	/// and @returns true if type was abstracted.
 	bool createGlobalSymbol(std::string const& _name, solidity::Expression const& _expr);
 	/// Checks if special variable or function was seen.
 	bool knownGlobalSymbol(std::string const& _var) const;
+	//@}
+
+	/// Methods related to SSA.
+	//@{
+	/// Maps a symbolic variable to an SSA index.
+	using VariableIndices = std::unordered_map<ASTNode const*, int>;
+	/// Copy the SSA indices of m_variables.
+	VariableIndices copyVariableIndices() const;
+	/// Backs up the SSA indices at a certain node.
+	void saveVariableIndices(ASTNode const* _node);
+	std::vector<VariableIndices> const& ssaIndices(ASTNode const* _node) const
+	{
+		return m_ssaIndices.at(_node);
+	}
+	//@}
+
+	/// Methods related to the solver.
+	//@{
+	void saveConstraints(Expression const& _constraints)
+	{
+		m_constraints = _constraints;
+	}
+	Expression const& constraints() const
+	{
+		return m_constraints;
+	}
+	//@}
+
+	/// Methods related to the state of the checker.
+	//@{
+	void saveIntermediateContext(ASTNode const* _node);
+	std::shared_ptr<EncodingContext> intermediateContext(ASTNode const* _node)
+	{
+		return m_intermediateContexts.at(_node);
+	}
 	//@}
 
 	/// Blockchain related methods.
@@ -117,7 +156,10 @@ private:
 	/// Adds _value to _account's balance.
 	void addBalance(Expression _account, Expression _value);
 
-	SolverInterface& m_solver;
+	std::shared_ptr<SolverInterface> m_solver;
+
+	/// Intermediate contexts at specific nodes.
+	std::unordered_map<ASTNode const*, std::shared_ptr<EncodingContext>> m_intermediateContexts;
 
 	/// Symbolic variables.
 	std::unordered_map<solidity::VariableDeclaration const*, std::shared_ptr<SymbolicVariable>> m_variables;
@@ -129,11 +171,17 @@ private:
 	/// variables and functions.
 	std::unordered_map<std::string, std::shared_ptr<smt::SymbolicVariable>> m_globalContext;
 
+	/// SSA indices at specific breakpoints.
+	std::unordered_map<ASTNode const*, std::vector<VariableIndices>> m_ssaIndices;
+
+	/// Constraints at specific breakpoints.
+	Expression m_constraints;
+
 	/// Symbolic `this` address.
-	std::unique_ptr<SymbolicAddressVariable> m_thisAddress;
+	std::shared_ptr<SymbolicAddressVariable> m_thisAddress;
 
 	/// Symbolic balances.
-	std::unique_ptr<SymbolicVariable> m_balances;
+	std::shared_ptr<SymbolicVariable> m_balances;
 };
 
 }
