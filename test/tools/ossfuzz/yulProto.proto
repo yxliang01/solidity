@@ -164,6 +164,15 @@ message UnaryOp {
   required Expression operand = 2;
 }
 
+message UnaryOpData {
+  enum UOpData {
+    SIZE = 1;
+    OFFSET = 2;
+  }
+  required UOpData op = 1;
+  required ObjectId identifier = 2;
+}
+
 message TernaryOp {
   enum TOp {
     ADDM = 0;
@@ -180,6 +189,7 @@ message CopyFunc {
     CALLDATA = 0;
     CODE = 1;
     RETURNDATA = 2;
+    DATA = 3;
   }
   required CopyType ct = 1;
   required Expression target = 2;
@@ -192,6 +202,17 @@ message ExtCodeCopy {
   required Expression target = 2;
   required Expression source = 3;
   required Expression size = 4;
+}
+
+/// Stub to insert object identifier at runtime
+message ObjectId {}
+
+message DataSize {
+  required ObjectId identifier = 1;
+}
+
+message DataOffset {
+  required ObjectId identifier = 1;
 }
 
 message NullaryOp {
@@ -243,6 +264,7 @@ message Expression {
     TernaryOp top = 5;
     NullaryOp nop = 6;
     FunctionCallSingleReturnVal func_expr = 7;
+    UnaryOpData unopdata = 8;
   }
 }
 
@@ -370,8 +392,23 @@ message FunctionDefinitionMultiReturnVal {
   required Block statements = 3;
 }
 
+message Object {
+  required Code code = 1;
+  optional Data data = 2;
+  optional Object obj = 3;
+}
+
+message Code {
+  required SpecialBlock block = 1;
+}
+
+message Data {
+  required string hex = 1;
+}
+
 message Program {
   repeated FunctionDefinition funcs = 1;
+  optional Object obj = 2;
 }
 
 package yul.test.yul_fuzzer;

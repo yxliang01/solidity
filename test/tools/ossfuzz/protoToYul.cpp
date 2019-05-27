@@ -19,6 +19,7 @@
 #include <libdevcore/StringUtils.h>
 #include <boost/range/algorithm_ext/erase.hpp>
 #include <libyul/Exceptions.h>
+#include <libdevcore/Whiskers.h>
 
 using namespace std;
 using namespace yul::test::yul_fuzzer;
@@ -37,6 +38,9 @@ string ProtoConverter::createHex(string const& _hexBytes) const
 	// We need this awkward if case because hex literals cannot be empty.
 	if (tmp.empty())
 		tmp = "1";
+	// Hex literal must contain even number of characters (nibbles)
+	if (tmp.size() % 2)
+		tmp.insert(0, "0");
 	return tmp;
 }
 
@@ -132,6 +136,9 @@ void ProtoConverter::visit(Expression const& _x)
 		break;
 	case Expression::kFuncExpr:
 		visit(_x.func_expr());
+		break;
+	case Expression::kUnopdata:
+		visit(_x.unopdata());
 		break;
 	case Expression::EXPR_ONEOF_NOT_SET:
 		m_output << "1";
@@ -234,6 +241,8 @@ void ProtoConverter::visit(EmptyVarDecl const&)
 
 void ProtoConverter::visit(MultiVarDecl const& _x)
 {
+	if (m_functionVecMultiReturnValue.size() == 0)
+		return;
 	size_t funcId = (static_cast<size_t>(_x.func_index()) % m_functionVecMultiReturnValue.size());
 
 	int numInParams = m_functionVecMultiReturnValue.at(funcId).first;
@@ -418,6 +427,9 @@ void ProtoConverter::visit(CopyFunc const& _x)
 	case CopyFunc::RETURNDATA:
 		m_output << "returndatacopy";
 		break;
+	case CopyFunc::DATA:
+		m_output << "datacopy";
+		break;
 	}
 	m_output << "(";
 	visit(_x.target());
@@ -549,6 +561,8 @@ void ProtoConverter::visitFunctionInputParams(T const& _x, unsigned _numInputPar
 
 void ProtoConverter::visit(MultiAssignment const& _x)
 {
+	if (m_functionVecMultiReturnValue.size() == 0)
+		return;
 	size_t funcId = (static_cast<size_t>(_x.func_index()) % m_functionVecMultiReturnValue.size());
 	unsigned numInParams = m_functionVecMultiReturnValue.at(funcId).first;
 	unsigned numOutParams = m_functionVecMultiReturnValue.at(funcId).second;
@@ -590,6 +604,8 @@ void ProtoConverter::visit(MultiAssignment const& _x)
 
 void ProtoConverter::visit(FunctionCallNoReturnVal const& _x)
 {
+	if (m_functionVecNoReturnValue.size() == 0)
+		return;
 	size_t funcId = (static_cast<size_t>(_x.func_index()) % m_functionVecNoReturnValue.size());
 	unsigned numInParams = m_functionVecNoReturnValue.at(funcId);
 	m_output << "foo_" << functionTypeToString(NumFunctionReturns::None) << "_" << funcId;
@@ -600,6 +616,8 @@ void ProtoConverter::visit(FunctionCallNoReturnVal const& _x)
 
 void ProtoConverter::visit(FunctionCallSingleReturnVal const& _x)
 {
+	if (m_functionVecSingleReturnValue.size() == 0)
+		return;
 	size_t funcId = (static_cast<size_t>(_x.func_index()) % m_functionVecSingleReturnValue.size());
 	unsigned numInParams = m_functionVecSingleReturnValue.at(funcId);
 	m_output << "foo_" << functionTypeToString(NumFunctionReturns::Single) << "_" << funcId;
@@ -779,6 +797,29 @@ void ProtoConverter::visit(TerminatingStmt const& _x)
 		visit(_x.self_des());
 		break;
 	case TerminatingStmt::TERM_ONEOF_NOT_SET:
+		break;
+	}
+}
+
+std::string ProtoConverter::getObjectIdentifier(ObjectId const&)
+{
+	// TODO: Infer identifer instead of hard-coding like this
+	return "object0";
+}
+
+void ProtoConverter::visit(UnaryOpData const& _x)
+{
+	switch (_x.op())
+	{
+	case UnaryOpData::SIZE:
+		m_output << Whiskers(R"(datasize("<id>")")
+			("id", getObjectIdentifier(_x.identifier()))
+			.render();
+		break;
+	case UnaryOpData::OFFSET:
+		m_output << Whiskers(R"(dataoffset("<id>")")
+			("id", getObjectIdentifier(_x.identifier()))
+			.render();
 		break;
 	}
 }
@@ -963,6 +1004,32 @@ void ProtoConverter::visit(FunctionDefinition const& _x)
 	m_numFunctionSets++;
 }
 
+void ProtoConverter::visit(Code const& _x)
+{
+	m_output << "code {\n";
+	visit(_x.block());
+	m_output << "}\n";
+}
+
+void ProtoConverter::visit(Data const& _x)
+{
+	m_output << "data \"datablock\" hex\"" << createHex(_x.hex()) << "\"\n";
+}
+
+void ProtoConverter::visit(Object const& _x)
+{
+	// object "object1" {
+	// ...
+	// }
+	m_output << "object \"object" << std::to_string(m_objectId++) << "\" {\n";
+	visit(_x.code());
+	if (_x.has_data())
+		visit(_x.data());
+	if (_x.has_obj())
+		visit(_x.obj());
+	m_output << "}\n";
+}
+
 void ProtoConverter::visit(Program const& _x)
 {
 	/* Program template is as follows
@@ -973,6 +1040,13 @@ void ProtoConverter::visit(Program const& _x)
 	 *                   a_0 := foo(calldataload(0))
 	 *                   sstore(0, a_0)
 	 */
+	// Objects are not mixed with regular yul code.
+	if (_x.has_obj())
+	{
+		visit(_x.obj());
+		return;
+	}
+
 	m_output << "{\n";
 	// Create globals at the beginning
 	// This creates let a_0, a_1, a_2, a_3 (followed by a new line)
