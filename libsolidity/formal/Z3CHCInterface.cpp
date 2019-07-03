@@ -81,6 +81,7 @@ void Z3CHCInterface::registerRelation(Expression const& _expr)
 void Z3CHCInterface::addRule(Expression const& _expr, string const& _name)
 {
 	z3::expr rule = toZ3Expr(_expr);
+	cout << "\n\nAdd rule\n" << rule << endl;
 	if (m_variables.empty())
 		m_solver.add_rule(rule, m_context.str_symbol(_name.c_str()));
 	else
@@ -108,8 +109,12 @@ pair<CheckResult, vector<string>> Z3CHCInterface::query(Expression const& _expr)
 			break;
 		}
 		case z3::check_result::unsat:
+		{
 			result = CheckResult::UNSATISFIABLE;
+			auto model = m_solver.get_answer();
+			cout << model << endl;
 			break;
+		}
 		case z3::check_result::unknown:
 			result = CheckResult::UNKNOWN;
 			break;

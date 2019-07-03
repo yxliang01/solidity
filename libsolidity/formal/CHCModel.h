@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include <libsolidity/formal/SMTChecker.h>
+#include <libsolidity/formal/SMTEncoder.h>
 
 #include <libsolidity/formal/CHCSolverInterface.h>
 
@@ -26,12 +26,12 @@ namespace dev
 namespace solidity
 {
 
-class CHCModel: public SMTChecker
+class CHCModel: public SMTEncoder
 {
 public:
-	CHCModel(langutil::ErrorReporter& _errorReporter, std::map<h256, std::string> const& _smtlib2Responses);
+	CHCModel(smt::EncodingContext& _context, langutil::ErrorReporter& _errorReporter);
 
-	void analyze(SourceUnit const& _sources, std::shared_ptr<langutil::Scanner> const& _scanner) override;
+	void analyze(SourceUnit const& _sources, std::shared_ptr<langutil::Scanner> const& _scanner);
 
 private:
 	/// Visitor functions.
@@ -41,7 +41,7 @@ private:
 	bool visit(FunctionDefinition const& _node) override;
 	void endVisit(FunctionDefinition const& _node) override;
 
-	void visitAssert(FunctionCall const& _funCall) override;
+	void visitAssert(FunctionCall const& _funCall);
 	//@}
 
 	/// Helpers.
@@ -119,11 +119,10 @@ private:
 	FunctionDefinition const* m_currentFunction = nullptr;
 	//@}
 
+	langutil::ErrorReporter& m_outerErrorReporter;
+
 	/// CHC solver.
 	std::unique_ptr<smt::CHCSolverInterface> m_interface;
-
-	langutil::ErrorReporter m_chcErrorReporter;
-	langutil::ErrorList m_chcErrors;
 };
 
 }

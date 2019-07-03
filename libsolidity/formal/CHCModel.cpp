@@ -33,22 +33,24 @@ using namespace dev;
 using namespace langutil;
 using namespace dev::solidity;
 
-CHCModel::CHCModel(ErrorReporter& _errorReporter, map<h256, std::string> const& _smtlib2Responses):
-	SMTChecker(_errorReporter, _smtlib2Responses),
-	m_interface(make_unique<smt::Z3CHCInterface>()),
-	m_chcErrorReporter(m_chcErrors)
+CHCModel::CHCModel(smt::EncodingContext& _context, ErrorReporter& _errorReporter):
+	SMTEncoder(_context),
+	m_outerErrorReporter(_errorReporter),
+	m_interface(make_unique<smt::Z3CHCInterface>())
 {
-	m_encodingOnly = true;
 }
 
 void CHCModel::analyze(SourceUnit const& _source, shared_ptr<Scanner> const& _scanner)
 {
-	if (!_source.annotation().experimentalFeatures.count(ExperimentalFeature::SMTChecker))
-		return;
+	solAssert(_source.annotation().experimentalFeatures.count(ExperimentalFeature::SMTChecker), "");
 
 	m_scanner = _scanner;
 
 	_source.accept(*this);
+
+	m_outerErrorReporter.append(m_errorReporter.errors());
+	m_errorReporter.clear();
+
 }
 
 bool CHCModel::visit(ContractDefinition const& _contract)
@@ -58,7 +60,7 @@ bool CHCModel::visit(ContractDefinition const& _contract)
 
 	reset();
 
-	if (!SMTChecker::visit(_contract))
+	if (!SMTEncoder::visit(_contract))
 		return false;
 
 	for (auto const& contract: _contract.annotation().linearizedBaseContracts)
@@ -101,7 +103,7 @@ bool CHCModel::visit(ContractDefinition const& _contract)
 		m_interface->addRule(constructorAppl, constructorName);
 
 		smt::Expression constructorInterface = smt::Expression::implies(
-			constructorAppl && assertions(),
+			constructorAppl && m_context.assertions(),
 			interface()
 		);
 		m_interface->addRule(constructorInterface, constructorName + "_to_" + interfaceName);
@@ -119,7 +121,7 @@ void CHCModel::endVisit(ContractDefinition const& _contract)
 	for (auto const& target: m_verificationTargets)
 		query(errorAppl, target->location(), "CHC Assertion violation");
 
-	SMTChecker::endVisit(_contract);
+	SMTEncoder::endVisit(_contract);
 }
 
 bool CHCModel::visit(FunctionDefinition const& _function)
@@ -127,7 +129,7 @@ bool CHCModel::visit(FunctionDefinition const& _function)
 	if (!shouldVisit(_function))
 		return false;
 
-	resetEncoding(_function);
+	initFunction(_function);
 
 	solAssert(!m_currentFunction, "Inlining internal function calls not yet implemented");
 	m_currentFunction = &_function;
@@ -145,7 +147,7 @@ bool CHCModel::visit(FunctionDefinition const& _function)
 		m_interfacePredicate->currentName() + "_to_" + m_predicates.at(&_function)->currentName()
 	);
 
-	SMTChecker::visit(_function);
+	SMTEncoder::visit(_function);
 
 	return false;
 }
@@ -160,7 +162,7 @@ void CHCModel::endVisit(FunctionDefinition const& _function)
 	declareSymbols();
 
 	smt::Expression functionInterface = smt::Expression::implies(
-		(*m_predicates.at(&_function))(m_functionInputs.at(&_function)) && assertions(),
+		(*m_predicates.at(&_function))(m_functionInputs.at(&_function)) && m_context.assertions(),
 		interface()
 	);
 	m_interface->addRule(
@@ -170,7 +172,7 @@ void CHCModel::endVisit(FunctionDefinition const& _function)
 
 	m_currentFunction = nullptr;
 
-	SMTChecker::endVisit(_function);
+	SMTEncoder::endVisit(_function);
 }
 
 void CHCModel::visitAssert(FunctionCall const& _funCall)
@@ -185,7 +187,7 @@ void CHCModel::visitAssert(FunctionCall const& _funCall)
 
 	smt::Expression assertNeg = !(m_context.expression(*args.front())->currentValue());
 	smt::Expression assertionError = smt::Expression::implies(
-		function(*m_currentFunction) && assertions() && assertNeg,
+		function(*m_currentFunction) && m_context.assertions() && assertNeg,
 		error()
 	);
 	string predicateName = "assert_" + to_string(_funCall.id());
@@ -339,19 +341,19 @@ void CHCModel::query(smt::Expression const& _query, langutil::SourceLocation con
 	{
 		std::ostringstream message;
 		message << _description << " happens here";
-		m_chcErrorReporter.warning(_location, message.str());
+		m_errorReporter.warning(_location, message.str());
 		break;
 	}
 	case smt::CheckResult::UNSATISFIABLE:
 		break;
 	case smt::CheckResult::UNKNOWN:
-		m_chcErrorReporter.warning(_location, _description + " might happen here.");
+		m_errorReporter.warning(_location, _description + " might happen here.");
 		break;
 	case smt::CheckResult::CONFLICTING:
-		m_chcErrorReporter.warning(_location, "At least two SMT solvers provided conflicting answers. Results might not be sound.");
+		m_errorReporter.warning(_location, "At least two SMT solvers provided conflicting answers. Results might not be sound.");
 		break;
 	case smt::CheckResult::ERROR:
-		m_chcErrorReporter.warning(_location, "Error trying to invoke SMT solver.");
+		m_errorReporter.warning(_location, "Error trying to invoke SMT solver.");
 		break;
 	}
 }
