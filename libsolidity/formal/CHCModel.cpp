@@ -35,6 +35,7 @@ using namespace dev::solidity;
 
 CHCModel::CHCModel(smt::EncodingContext& _context, ErrorReporter& _errorReporter):
 	SMTEncoder(_context),
+	m_functionBlocks(0),
 	m_outerErrorReporter(_errorReporter),
 	m_interface(make_unique<smt::Z3CHCInterface>())
 {
@@ -47,10 +48,6 @@ void CHCModel::analyze(SourceUnit const& _source, shared_ptr<Scanner> const& _sc
 	m_scanner = _scanner;
 
 	_source.accept(*this);
-
-	m_outerErrorReporter.append(m_errorReporter.errors());
-	m_errorReporter.clear();
-
 }
 
 bool CHCModel::visit(ContractDefinition const& _contract)
@@ -136,18 +133,21 @@ bool CHCModel::visit(FunctionDefinition const& _function)
 
 	declareSymbols();
 
-	createFunctionBlock(_function);
+	createFunctionBlock(*m_currentFunction);
 
 	smt::Expression interfaceFunction = smt::Expression::implies(
-		interface(),
-		function(_function, true)
+		interface() && m_context.assertions(),
+		predicateCurrent(m_currentFunction)
 	);
 	m_interface->addRule(
 		interfaceFunction,
-		m_interfacePredicate->currentName() + "_to_" + m_predicates.at(&_function)->currentName()
+		m_interfacePredicate->currentName() + "_to_" + m_predicates.at(m_currentFunction)->currentName()
 	);
 
-	SMTEncoder::visit(_function);
+	pushBlock(predicateCurrent(m_currentFunction));
+	solAssert(m_functionBlocks == 0, "");
+	m_functionBlocks = 1;
+	SMTEncoder::visit(*m_currentFunction);
 
 	return false;
 }
@@ -162,7 +162,7 @@ void CHCModel::endVisit(FunctionDefinition const& _function)
 	declareSymbols();
 
 	smt::Expression functionInterface = smt::Expression::implies(
-		(*m_predicates.at(&_function))(m_functionInputs.at(&_function)) && m_context.assertions(),
+		predicateEntry(&_function) && m_context.assertions(),
 		interface()
 	);
 	m_interface->addRule(
@@ -171,8 +171,94 @@ void CHCModel::endVisit(FunctionDefinition const& _function)
 	);
 
 	m_currentFunction = nullptr;
+	solAssert(m_path.size() == m_functionBlocks, "");
+	for (unsigned i = 0; i < m_path.size(); ++i)
+		m_context.popSolver();
+	m_functionBlocks = 0;
+	m_path.clear();
 
 	SMTEncoder::endVisit(_function);
+}
+
+bool CHCModel::visit(IfStatement const& _if)
+{
+	solAssert(m_currentFunction, "");
+
+	/// Artificial blank block to avoid redundancies
+	/// in the constraints to true/false parts of _if.
+	declareSymbols();
+	m_predicates[&_if] = createBlock(functionSort(*m_currentFunction), "if_" + to_string(_if.id()));
+	smt::Expression blankIf = predicateCurrent(&_if);
+	smt::Expression functionIf = smt::Expression::implies(
+		m_path.back() && m_context.assertions(),
+		blankIf
+	);
+	addRule(functionIf, m_currentFunction, &_if);
+
+	pushBlock(blankIf);
+
+	_if.condition().accept(*this);
+	declareSymbols();
+
+	smt::Expression condition = m_context.expression(_if.condition())->currentValue();
+	Statement const* trueStmt = &_if.trueStatement();
+	solAssert(trueStmt, "");
+
+	/// Blank -> true statement block
+	m_predicates[trueStmt] = createBlock(
+		functionSort(*m_currentFunction),
+		"if_true_" + to_string(trueStmt->id())
+	);
+	smt::Expression ifTruePredicate = predicateCurrent(trueStmt);
+	smt::Expression functionIfTrue = smt::Expression::implies(
+		blankIf && m_context.assertions() && condition,
+		ifTruePredicate
+	);
+	addRule(functionIfTrue, &_if, trueStmt);
+
+	/// Blank -> false statement block
+	smt::Expression ifFalsePredicate(true);
+	if (Statement const* falseStmt = _if.falseStatement())
+	{
+		m_predicates[falseStmt] = createBlock(
+			functionSort(*m_currentFunction),
+			"if_false_" + to_string(falseStmt->id())
+		);
+		ifFalsePredicate = predicateCurrent(falseStmt);
+		smt::Expression functionIfFalse = smt::Expression::implies(
+			blankIf && m_context.assertions() && !condition,
+			ifFalsePredicate
+		);
+		addRule(functionIfFalse, &_if, falseStmt);
+	}
+
+	/// New function block at join point
+	createFunctionBlock(*m_currentFunction);
+
+	smt::Expression directOut = predicateCurrent(m_currentFunction);
+
+	visitBranch(_if.trueStatement(), ifTruePredicate);
+
+	if (Statement const* falseStmt = _if.falseStatement())
+		visitBranch(*falseStmt, ifFalsePredicate);
+	else
+	{
+		/// Direct edge between Blank and the new function block
+		smt::Expression blankFunction = smt::Expression::implies(
+			blankIf && m_context.assertions() && !condition,
+			directOut
+		);
+		addRule(blankFunction, &_if, m_currentFunction);
+	}
+
+	// Artificial _if block.
+	solAssert(m_path.back().name == blankIf.name, "");
+	popBlock();
+
+	pushBlock(predicateCurrent(m_currentFunction));
+	++m_functionBlocks;
+
+	return false;
 }
 
 void CHCModel::visitAssert(FunctionCall const& _funCall)
@@ -181,19 +267,41 @@ void CHCModel::visitAssert(FunctionCall const& _funCall)
 	solAssert(args.size() == 1, "");
 	solAssert(args.front()->annotation().type->category() == Type::Category::Bool, "");
 
-	solAssert(m_currentFunction, "");
+	solAssert(!m_path.empty(), "");
 
 	declareSymbols();
 
 	smt::Expression assertNeg = !(m_context.expression(*args.front())->currentValue());
 	smt::Expression assertionError = smt::Expression::implies(
-		function(*m_currentFunction) && m_context.assertions() && assertNeg,
+		m_path.back() && m_context.assertions() && assertNeg,
 		error()
 	);
 	string predicateName = "assert_" + to_string(_funCall.id());
 	m_interface->addRule(assertionError, predicateName + "_to_error");
 
 	m_verificationTargets.push_back(&_funCall);
+}
+
+void CHCModel::visitBranch(Statement const& _statement, smt::Expression const& _predicate)
+{
+	pushBlock(_predicate);
+	unsigned functionBlocks = m_functionBlocks;
+	_statement.accept(*this);
+	declareSymbols();
+
+	smt::Expression branchFunction = smt::Expression::implies(
+		_predicate && m_context.assertions(),
+		predicateCurrent(m_currentFunction)
+	);
+	addRule(branchFunction, &_statement, m_currentFunction);
+
+	popBlock();
+	/// Pop function blocks that were created inside true statement
+	while(m_functionBlocks > functionBlocks)
+	{
+		popBlock();
+		--m_functionBlocks;
+	}
 }
 
 void CHCModel::reset()
@@ -203,6 +311,7 @@ void CHCModel::reset()
 	m_stateVariables.clear();
 	m_verificationTargets.clear();
 	m_interface->reset();
+	m_path.clear();
 }
 
 bool CHCModel::shouldVisit(ContractDefinition const& _contract)
@@ -223,6 +332,18 @@ bool CHCModel::shouldVisit(FunctionDefinition const& _function)
 	)
 		return true;
 	return false;
+}
+
+void CHCModel::pushBlock(smt::Expression const& _block)
+{
+	m_context.pushSolver();
+	m_path.push_back(_block);
+}
+
+void CHCModel::popBlock()
+{
+	m_context.popSolver();
+	m_path.pop_back();
 }
 
 smt::SortPointer CHCModel::functionSort(FunctionDefinition const& _function)
@@ -283,12 +404,22 @@ void CHCModel::createFunctionBlock(FunctionDefinition const& _function)
 		m_interface->registerRelation(m_predicates.at(&_function)->currentValue());
 	}
 	else
-	{
 		m_predicates[&_function] = createBlock(
 			functionSort(_function),
 			predicateName(_function)
 		);
-	}
+}
+
+vector<smt::Expression> CHCModel::functionParameters(FunctionDefinition const& _function)
+{
+	vector<smt::Expression> paramExprs;
+	for (auto const& var: m_stateVariables)
+		paramExprs.push_back(m_context.variable(*var)->currentValue());
+	for (auto const& var: _function.parameters() + _function.returnParameters())
+		paramExprs.push_back(m_context.variable(*var)->currentValue());
+	for (auto const& var: _function.localVariables())
+		paramExprs.push_back(m_context.variable(*var)->currentValue());
+	return paramExprs;
 }
 
 smt::Expression CHCModel::constructor()
@@ -312,22 +443,25 @@ smt::Expression CHCModel::error()
 	return (*m_errorPredicate)({});
 }
 
-smt::Expression CHCModel::function(FunctionDefinition const& _function, bool _storeParams)
+smt::Expression CHCModel::predicateCurrent(ASTNode const* _node)
 {
-	solAssert(m_predicates.count(&_function), "");
+	solAssert(m_currentFunction, "");
+	vector<smt::Expression> paramExprs = functionParameters(*m_currentFunction);
+	return (*m_predicates.at(_node))(move(paramExprs));
+}
 
-	vector<smt::Expression> paramExprs;
-	for (auto const& var: m_stateVariables)
-		paramExprs.push_back(m_context.variable(*var)->currentValue());
-	for (auto const& var: _function.parameters() + _function.returnParameters())
-		paramExprs.push_back(m_context.variable(*var)->currentValue());
-	for (auto const& var: _function.localVariables())
-		paramExprs.push_back(m_context.variable(*var)->currentValue());
+smt::Expression CHCModel::predicateEntry(ASTNode const* _node)
+{
+	solAssert(!m_path.empty(), "");
+	return (*m_predicates.at(_node))(m_path.back().arguments);
+}
 
-	if (_storeParams)
-		m_functionInputs[&_function] = paramExprs;
-
-	return (*m_predicates.at(&_function))(move(paramExprs));
+void CHCModel::addRule(smt::Expression const& _rule, ASTNode const* _from, ASTNode const* _to)
+{
+	m_interface->addRule(
+		_rule,
+		m_predicates.at(_from)->currentName() + "_to_" + m_predicates.at(_to)->currentName()
+	);
 }
 
 void CHCModel::query(smt::Expression const& _query, langutil::SourceLocation const& _location, std::string _description)
@@ -341,19 +475,19 @@ void CHCModel::query(smt::Expression const& _query, langutil::SourceLocation con
 	{
 		std::ostringstream message;
 		message << _description << " happens here";
-		m_errorReporter.warning(_location, message.str());
+		m_outerErrorReporter.warning(_location, message.str());
 		break;
 	}
 	case smt::CheckResult::UNSATISFIABLE:
 		break;
 	case smt::CheckResult::UNKNOWN:
-		m_errorReporter.warning(_location, _description + " might happen here.");
+		m_outerErrorReporter.warning(_location, _description + " might happen here.");
 		break;
 	case smt::CheckResult::CONFLICTING:
-		m_errorReporter.warning(_location, "At least two SMT solvers provided conflicting answers. Results might not be sound.");
+		m_outerErrorReporter.warning(_location, "At least two SMT solvers provided conflicting answers. Results might not be sound.");
 		break;
 	case smt::CheckResult::ERROR:
-		m_errorReporter.warning(_location, "Error trying to invoke SMT solver.");
+		m_outerErrorReporter.warning(_location, "Error trying to invoke SMT solver.");
 		break;
 	}
 }

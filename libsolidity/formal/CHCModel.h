@@ -40,8 +40,10 @@ private:
 	void endVisit(ContractDefinition const& _node) override;
 	bool visit(FunctionDefinition const& _node) override;
 	void endVisit(FunctionDefinition const& _node) override;
+	bool visit(IfStatement const& _node) override;
 
 	void visitAssert(FunctionCall const& _funCall);
+	void visitBranch(Statement const& _statement, smt::Expression const& _predicate);
 	//@}
 
 	/// Helpers.
@@ -49,6 +51,8 @@ private:
 	void reset();
 	bool shouldVisit(ContractDefinition const& _contract);
 	bool shouldVisit(FunctionDefinition const& _function);
+	void pushBlock(smt::Expression const& _block);
+	void popBlock();
 	//@}
 
 	/// Sort helpers.
@@ -61,17 +65,29 @@ private:
 	//@{
 	std::string predicateName(FunctionDefinition const& _function);
 
+	/// @returns a new block of given _sort and _name.
 	std::shared_ptr<smt::SymbolicFunctionVariable> createBlock(smt::SortPointer _sort, std::string _name);
+	/// Creates a block for the given _function or increases its SSA index
+	/// if the block already exists which in practice creates a new function.
 	void createFunctionBlock(FunctionDefinition const& _function);
+	std::vector<smt::Expression> functionParameters(FunctionDefinition const& _function);
 
+	/// Constructor predicate over current variables.
 	smt::Expression constructor();
+	/// Interface predicate over current variables.
 	smt::Expression interface();
+	/// Error predicate over current variables.
 	smt::Expression error();
-	smt::Expression function(FunctionDefinition const& _function, bool _storeParams = false);
+	/// Predicate for block _node over current variables.
+	smt::Expression predicateCurrent(ASTNode const* _node);
+	/// Predicate for block _node over the variables at the latest
+	/// block entry.
+	smt::Expression predicateEntry(ASTNode const* _node);
 	//@}
 
 	/// Solver related.
 	//@{
+	void addRule(smt::Expression const& _rule, ASTNode const* _from, ASTNode const* _to);
 	void query(smt::Expression const& _query, langutil::SourceLocation const& _location, std::string _description);
 	void declareSymbols();
 	//@}
@@ -117,8 +133,13 @@ private:
 	/// Control-flow.
 	//@{
 	FunctionDefinition const* m_currentFunction = nullptr;
+	/// Number of basic blocks created for the body of the current function.
+	unsigned m_functionBlocks = 0;
+	/// The current control flow path.
+	std::vector<smt::Expression> m_path;
 	//@}
 
+	/// ErrorReporter that comes from CompilerStack.
 	langutil::ErrorReporter& m_outerErrorReporter;
 
 	/// CHC solver.
