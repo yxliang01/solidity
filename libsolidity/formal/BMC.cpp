@@ -49,6 +49,7 @@ void BMC::analyze(SourceUnit const& _source, shared_ptr<Scanner> const& _scanner
 
 	m_scanner = _scanner;
 
+	m_context.setSolver(m_interface);
 	_source.accept(*this);
 
 	solAssert(m_interface->solvers() > 0, "");
@@ -459,7 +460,7 @@ void BMC::abstractFunctionCall(FunctionCall const& _funCall)
 		smtArguments.push_back(expr(*arg));
 	defineExpr(_funCall, (*m_context.expression(_funCall.expression()))(smtArguments));
 	m_uninterpretedTerms.insert(&_funCall);
-	setSymbolicUnknownValue(expr(_funCall), _funCall.annotation().type, *m_context.solver());
+	setSymbolicUnknownValue(expr(_funCall), _funCall.annotation().type, m_context);
 }
 
 void BMC::internalOrExternalFunctionCall(FunctionCall const& _funCall)

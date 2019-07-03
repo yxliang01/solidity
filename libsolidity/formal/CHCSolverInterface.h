@@ -29,15 +29,10 @@ namespace smt
 /* Interface for constrained Horn solvers.
  * Derives from SolverInterface to use variable handling.
  */
-class CHCSolverInterface: public SolverInterface
+class CHCSolverInterface
 {
 public:
 	virtual ~CHCSolverInterface() = default;
-	void reset() override = 0;
-
-	void push() override { solAssert(false, "Horn solver does not support push."); }
-	void pop() override { solAssert(false, "Horn solver does not support pop."); }
-	void addAssertion(Expression const&) override { solAssert(false, "Horn solver does not support assertions."); }
 
 	/// Takes a function declaration as a relation.
 	virtual void registerRelation(Expression const& _expr) = 0;
@@ -48,10 +43,6 @@ public:
 
 	/// Takes a function application and checks
 	/// for reachability.
-	std::pair<CheckResult, std::vector<std::string>> check(
-		std::vector<Expression> const& _expressionsToEvaluate
-	) override = 0;
-
 	virtual std::pair<CheckResult, std::vector<std::string>> query(
 		Expression const& _expr
 	) = 0;

@@ -25,69 +25,45 @@ using namespace dev;
 using namespace dev::solidity::smt;
 
 Z3CHCInterface::Z3CHCInterface():
-	m_solver(m_context),
-	m_variables(m_context)
+	m_context(make_shared<z3::context>()),
+	m_solver(*m_context),
+	m_z3Interface(make_shared<Z3Interface>(m_context)),
+	m_variables(*m_context)
 {
 	// This needs to be set globally.
 	z3::set_param("rewriter.pull_cheap_ite", true);
 	// This needs to be set in the context.
-	m_context.set("timeout", queryTimeout);
+	m_context->set("timeout", queryTimeout);
 
-	z3::params p(m_context);
+	z3::params p(*m_context);
 	p.set("print_certificate", true);
 	m_solver.set(p);
 }
 
-void Z3CHCInterface::reset()
-{
-	Z3Interface::reset();
-}
-
-void Z3CHCInterface::push()
-{
-	CHCSolverInterface::push();
-}
-
-void Z3CHCInterface::pop()
-{
-	CHCSolverInterface::pop();
-}
-
 void Z3CHCInterface::declareVariable(string const& _name, Sort const& _sort)
 {
-	if (m_constants.count(_name))
+	if (m_z3Interface->constants().count(_name))
 		return;
-	Z3Interface::declareVariable(_name, _sort);
+	m_z3Interface->declareVariable(_name, _sort);
 	if (_sort.kind != Kind::Function)
-		m_variables.push_back(m_constants.at(_name));
-}
-
-void Z3CHCInterface::addAssertion(Expression const& _expr)
-{
-	CHCSolverInterface::addAssertion(_expr);
-}
-
-pair<CheckResult, vector<string>> Z3CHCInterface::check(vector<Expression> const& _expressionsToEvaluate)
-{
-	solAssert(_expressionsToEvaluate.size() == 1, "");
-	return query(_expressionsToEvaluate.front());
+		m_variables.push_back(m_z3Interface->constants().at(_name));
 }
 
 void Z3CHCInterface::registerRelation(Expression const& _expr)
 {
-	m_solver.register_relation(m_functions.at(_expr.name));
+	m_solver.register_relation(m_z3Interface->functions().at(_expr.name));
 }
 
 void Z3CHCInterface::addRule(Expression const& _expr, string const& _name)
 {
-	z3::expr rule = toZ3Expr(_expr);
+	z3::expr rule = m_z3Interface->toZ3Expr(_expr);
 	cout << "\n\nAdd rule\n" << rule << endl;
 	if (m_variables.empty())
-		m_solver.add_rule(rule, m_context.str_symbol(_name.c_str()));
+		m_solver.add_rule(rule, m_context->str_symbol(_name.c_str()));
 	else
 	{
 		z3::expr boundRule = z3::forall(m_variables, rule);
-		m_solver.add_rule(boundRule, m_context.str_symbol(_name.c_str()));
+		m_solver.add_rule(boundRule, m_context->str_symbol(_name.c_str()));
 	}
 }
 
@@ -98,7 +74,7 @@ pair<CheckResult, vector<string>> Z3CHCInterface::query(Expression const& _expr)
 	vector<string> values;
 	try
 	{
-		z3::expr z3Expr = toZ3Expr(_expr);
+		z3::expr z3Expr = m_z3Interface->toZ3Expr(_expr);
 		switch (m_solver.query(z3Expr))
 		{
 		case z3::check_result::sat:

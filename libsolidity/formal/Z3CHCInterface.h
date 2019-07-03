@@ -27,32 +27,34 @@ namespace solidity
 namespace smt
 {
 
-class Z3CHCInterface: public Z3Interface, public CHCSolverInterface
+class Z3CHCInterface: public CHCSolverInterface
 {
 public:
 	Z3CHCInterface();
 
-	void reset() override;
-
-	void push() override;
-	void pop() override;
-
-	void declareVariable(std::string const& _name, Sort const& _sort) override;
-
-	void addAssertion(Expression const& _expr) override;
+	void declareVariable(std::string const& _name, Sort const& _sort);
 
 	void registerRelation(Expression const& _expr) override;
 
 	void addRule(Expression const& _expr, std::string const& _name) override;
 
-	std::pair<CheckResult, std::vector<std::string>> check(std::vector<Expression> const& _expressionsToEvaluate) override;
 	std::pair<CheckResult, std::vector<std::string>> query(Expression const& _expr) override;
 
+	std::shared_ptr<Z3Interface> z3Interface() { return m_z3Interface; }
+
 private:
+	// Horn solver.
+	std::shared_ptr<z3::context> m_context;
 	z3::fixedpoint m_solver;
+
+	// Used to handle variables.
+	std::shared_ptr<Z3Interface> m_z3Interface;
 
 	// Used to bound all vars as universally quantified.
 	z3::expr_vector m_variables;
+
+	// SMT query timeout in milliseconds.
+	static int const queryTimeout = 10000;
 };
 
 }

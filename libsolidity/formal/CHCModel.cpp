@@ -45,6 +45,7 @@ void CHCModel::analyze(SourceUnit const& _source, shared_ptr<Scanner> const& _sc
 {
 	solAssert(_source.annotation().experimentalFeatures.count(ExperimentalFeature::SMTChecker), "");
 
+	m_context.setSolver(m_interface->z3Interface());
 	m_scanner = _scanner;
 
 	_source.accept(*this);
@@ -326,7 +327,6 @@ void CHCModel::reset()
 	m_stateSorts.clear();
 	m_stateVariables.clear();
 	m_verificationTargets.clear();
-	m_interface->reset();
 	m_path.clear();
 }
 
@@ -406,7 +406,7 @@ shared_ptr<smt::SymbolicFunctionVariable> CHCModel::createBlock(smt::SortPointer
 	auto block = make_shared<smt::SymbolicFunctionVariable>(
 		_sort,
 		_name,
-		*m_interface
+		m_context
 	);
 	m_interface->registerRelation(block->currentValue());
 	return block;

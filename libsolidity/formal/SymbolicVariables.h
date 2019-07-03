@@ -29,6 +29,7 @@ namespace solidity
 namespace smt
 {
 
+class EncodingContext;
 class Type;
 
 /**
@@ -40,12 +41,12 @@ public:
 	SymbolicVariable(
 		solidity::TypePointer _type,
 		std::string _uniqueName,
-		SolverInterface& _interface
+		EncodingContext& _context
 	);
 	SymbolicVariable(
 		SortPointer _sort,
 		std::string _uniqueName,
-		SolverInterface& _interface
+		EncodingContext& _context
 	);
 
 	virtual ~SymbolicVariable() = default;
@@ -75,7 +76,7 @@ protected:
 	/// Solidity type, used for size and range in number types.
 	solidity::TypePointer m_type;
 	std::string m_uniqueName;
-	SolverInterface& m_interface;
+	EncodingContext& m_context;
 	std::unique_ptr<SSAVariable> m_ssa;
 };
 
@@ -88,7 +89,7 @@ public:
 	SymbolicBoolVariable(
 		solidity::TypePointer _type,
 		std::string _uniqueName,
-		SolverInterface& _interface
+		EncodingContext& _context
 	);
 };
 
@@ -101,7 +102,7 @@ public:
 	SymbolicIntVariable(
 		solidity::TypePointer _type,
 		std::string _uniqueName,
-		SolverInterface& _interface
+		EncodingContext& _context
 	);
 };
 
@@ -113,7 +114,7 @@ class SymbolicAddressVariable: public SymbolicIntVariable
 public:
 	SymbolicAddressVariable(
 		std::string _uniqueName,
-		SolverInterface& _interface
+		EncodingContext& _context
 	);
 };
 
@@ -126,7 +127,7 @@ public:
 	SymbolicFixedBytesVariable(
 		unsigned _numBytes,
 		std::string _uniqueName,
-		SolverInterface& _interface
+		EncodingContext& _context
 	);
 };
 
@@ -139,12 +140,12 @@ public:
 	SymbolicFunctionVariable(
 		solidity::TypePointer _type,
 		std::string _uniqueName,
-		SolverInterface& _interface
+		EncodingContext& _context
 	);
 	SymbolicFunctionVariable(
 		SortPointer _sort,
 		std::string _uniqueName,
-		SolverInterface& _interface
+		EncodingContext& _context
 	);
 
 	Expression increaseIndex();
@@ -167,7 +168,7 @@ public:
 	SymbolicMappingVariable(
 		solidity::TypePointer _type,
 		std::string _uniqueName,
-		SolverInterface& _interface
+		EncodingContext& _context
 	);
 };
 
@@ -180,7 +181,7 @@ public:
 	SymbolicArrayVariable(
 		solidity::TypePointer _type,
 		std::string _uniqueName,
-		SolverInterface& _interface
+		EncodingContext& _context
 	);
 };
 
@@ -193,7 +194,7 @@ public:
 	SymbolicEnumVariable(
 		solidity::TypePointer _type,
 		std::string _uniqueName,
-		SolverInterface& _interface
+		EncodingContext& _context
 	);
 };
 
@@ -206,7 +207,7 @@ public:
 	SymbolicTupleVariable(
 		solidity::TypePointer _type,
 		std::string _uniqueName,
-		SolverInterface& _interface
+		EncodingContext& _context
 	);
 
 	std::vector<std::shared_ptr<SymbolicVariable>> const& components()

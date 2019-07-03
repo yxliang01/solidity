@@ -36,10 +36,16 @@ namespace smt
 class EncodingContext
 {
 public:
-	EncodingContext(std::shared_ptr<SolverInterface> _solver);
+	EncodingContext();
 
 	/// Resets the entire context.
 	void reset();
+
+	void setSolver(std::shared_ptr<SolverInterface> _solver)
+	{
+		solAssert(_solver, "");
+		m_solver = _solver;
+	}
 
 	/// Variables.
 	//@{
@@ -122,6 +128,8 @@ public:
 	void popSolver();
 	void addAssertion(Expression const& _e);
 	std::shared_ptr<SolverInterface> solver() { return m_solver; }
+	/// Forwards a variable declaration to the solver.
+	Expression newVariable(std::string _name, SortPointer _sort);
 	//@}
 
 private:

@@ -19,7 +19,7 @@
 
 #include <libsolidity/formal/SMTEncoder.h>
 
-#include <libsolidity/formal/CHCSolverInterface.h>
+#include <libsolidity/formal/Z3CHCInterface.h>
 
 namespace dev
 {
@@ -144,7 +144,7 @@ private:
 	langutil::ErrorReporter& m_outerErrorReporter;
 
 	/// CHC solver.
-	std::unique_ptr<smt::CHCSolverInterface> m_interface;
+	std::unique_ptr<smt::Z3CHCInterface> m_interface;
 };
 
 }
