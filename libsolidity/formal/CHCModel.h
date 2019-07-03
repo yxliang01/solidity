@@ -41,6 +41,7 @@ private:
 	bool visit(FunctionDefinition const& _node) override;
 	void endVisit(FunctionDefinition const& _node) override;
 	bool visit(IfStatement const& _node) override;
+	void endVisit(FunctionCall const& _node) override;
 
 	void visitAssert(FunctionCall const& _funCall);
 	void visitBranch(Statement const& _statement, smt::Expression const& _predicate);

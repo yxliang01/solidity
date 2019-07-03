@@ -261,6 +261,22 @@ bool CHCModel::visit(IfStatement const& _if)
 	return false;
 }
 
+void CHCModel::endVisit(FunctionCall const& _funCall)
+{
+	solAssert(_funCall.annotation().kind != FunctionCallKind::Unset, "");
+
+	if (_funCall.annotation().kind == FunctionCallKind::FunctionCall)
+	{
+		FunctionType const& funType = dynamic_cast<FunctionType const&>(*_funCall.expression().annotation().type);
+		if (funType.kind() == FunctionType::Kind::Assert)
+			visitAssert(_funCall);
+		else if (funType.kind() == FunctionType::Kind::Require)
+			visitRequire(_funCall);
+	}
+
+	SMTEncoder::endVisit(_funCall);
+}
+
 void CHCModel::visitAssert(FunctionCall const& _funCall)
 {
 	auto const& args = _funCall.arguments();
