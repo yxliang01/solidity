@@ -7,6 +7,7 @@ Compiler Features:
 
 
 Bugfixes:
+ * Scanner: Fix doxygen-style parsing of multi-line comments with triple slashes when file is encoded with CRLF instead of LF.
 
 
 ### 0.5.11 (2019-08-12)
