@@ -23,6 +23,7 @@
 #include <libyul/optimiser/Disambiguator.h>
 #include <libyul/optimiser/VarDeclInitializer.h>
 #include <libyul/optimiser/BlockFlattener.h>
+#include <libyul/optimiser/CallGraphGenerator.h>
 #include <libyul/optimiser/ControlFlowSimplifier.h>
 #include <libyul/optimiser/DeadCodeEliminator.h>
 #include <libyul/optimiser/FunctionGrouper.h>
@@ -37,6 +38,7 @@
 #include <libyul/optimiser/UnusedPruner.h>
 #include <libyul/optimiser/ExpressionSimplifier.h>
 #include <libyul/optimiser/CommonSubexpressionEliminator.h>
+#include <libyul/optimiser/Semantics.h>
 #include <libyul/optimiser/SSAReverser.h>
 #include <libyul/optimiser/SSATransform.h>
 #include <libyul/optimiser/StackCompressor.h>
@@ -96,6 +98,9 @@ void OptimiserSuite::run(
 
 	NameDispenser dispenser{_dialect, ast, reservedIdentifiers};
 
+	map<YulString, SideEffects> functionSideEffects =
+		SideEffectsPropagator::sideEffects(_dialect, CallGraphGenerator::callGraph(ast));
+
 	size_t codeSize = 0;
 	for (size_t rounds = 0; rounds < 12; ++rounds)
 	{
@@ -114,7 +119,8 @@ void OptimiserSuite::run(
 			RedundantAssignEliminator::run(_dialect, ast);
 
 			ExpressionSimplifier::run(_dialect, ast);
-			CommonSubexpressionEliminator{_dialect}(ast);
+
+			CommonSubexpressionEliminator{_dialect, &functionSideEffects}(ast);
 		}
 
 		{
@@ -126,16 +132,18 @@ void OptimiserSuite::run(
 			DeadCodeEliminator{_dialect}(ast);
 			UnusedPruner::runUntilStabilised(_dialect, ast, reservedIdentifiers);
 		}
+
+		functionSideEffects = SideEffectsPropagator::sideEffects(_dialect, CallGraphGenerator::callGraph(ast));
 		{
 			// simplify again
-			CommonSubexpressionEliminator{_dialect}(ast);
+			CommonSubexpressionEliminator{_dialect, &functionSideEffects}(ast);
 			UnusedPruner::runUntilStabilised(_dialect, ast, reservedIdentifiers);
 		}
 
 		{
 			// reverse SSA
 			SSAReverser::run(ast);
-			CommonSubexpressionEliminator{_dialect}(ast);
+			CommonSubexpressionEliminator{_dialect, &functionSideEffects}(ast);
 			UnusedPruner::runUntilStabilised(_dialect, ast, reservedIdentifiers);
 
 			ExpressionJoiner::run(ast);
@@ -150,13 +158,14 @@ void OptimiserSuite::run(
 			UnusedPruner::runUntilStabilised(_dialect, ast, reservedIdentifiers);
 		}
 
+		functionSideEffects = SideEffectsPropagator::sideEffects(_dialect, CallGraphGenerator::callGraph(ast));
 		{
 			// Turn into SSA again and simplify
 			ExpressionSplitter{_dialect, dispenser}(ast);
 			SSATransform::run(ast, dispenser);
 			RedundantAssignEliminator::run(_dialect, ast);
 			RedundantAssignEliminator::run(_dialect, ast);
-			CommonSubexpressionEliminator{_dialect}(ast);
+			CommonSubexpressionEliminator{_dialect, &functionSideEffects}(ast);
 		}
 
 		{
@@ -177,12 +186,14 @@ void OptimiserSuite::run(
 			BlockFlattener{}(ast);
 			DeadCodeEliminator{_dialect}(ast);
 			ControlFlowSimplifier{_dialect}(ast);
-			CommonSubexpressionEliminator{_dialect}(ast);
+			functionSideEffects = SideEffectsPropagator::sideEffects(_dialect, CallGraphGenerator::callGraph(ast));
+			CommonSubexpressionEliminator{_dialect, &functionSideEffects}(ast);
 			SSATransform::run(ast, dispenser);
 			RedundantAssignEliminator::run(_dialect, ast);
 			RedundantAssignEliminator::run(_dialect, ast);
 			UnusedPruner::runUntilStabilised(_dialect, ast, reservedIdentifiers);
-			CommonSubexpressionEliminator{_dialect}(ast);
+			functionSideEffects = SideEffectsPropagator::sideEffects(_dialect, CallGraphGenerator::callGraph(ast));
+			CommonSubexpressionEliminator{_dialect, &functionSideEffects}(ast);
 		}
 	}
 
@@ -197,7 +208,8 @@ void OptimiserSuite::run(
 	UnusedPruner::runUntilStabilised(_dialect, ast, reservedIdentifiers);
 
 	SSAReverser::run(ast);
-	CommonSubexpressionEliminator{_dialect}(ast);
+	functionSideEffects = SideEffectsPropagator::sideEffects(_dialect, CallGraphGenerator::callGraph(ast));
+	CommonSubexpressionEliminator{_dialect, &functionSideEffects}(ast);
 	UnusedPruner::runUntilStabilised(_dialect, ast, reservedIdentifiers);
 
 	ExpressionJoiner::run(ast);

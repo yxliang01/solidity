@@ -26,6 +26,7 @@
 #include <libyul/optimiser/ControlFlowSimplifier.h>
 #include <libyul/optimiser/DeadCodeEliminator.h>
 #include <libyul/optimiser/Disambiguator.h>
+#include <libyul/optimiser/CallGraphGenerator.h>
 #include <libyul/optimiser/CommonSubexpressionEliminator.h>
 #include <libyul/optimiser/NameCollector.h>
 #include <libyul/optimiser/EquivalentFunctionCombiner.h>
@@ -45,6 +46,7 @@
 #include <libyul/optimiser/ExpressionJoiner.h>
 #include <libyul/optimiser/SSAReverser.h>
 #include <libyul/optimiser/SSATransform.h>
+#include <libyul/optimiser/Semantics.h>
 #include <libyul/optimiser/RedundantAssignEliminator.h>
 #include <libyul/optimiser/StructuralSimplifier.h>
 #include <libyul/optimiser/StackCompressor.h>
@@ -149,7 +151,9 @@ TestCase::TestResult YulOptimizerTest::run(ostream& _stream, string const& _line
 	else if (m_optimizerStep == "commonSubexpressionEliminator")
 	{
 		disambiguate();
-		(CommonSubexpressionEliminator{*m_dialect})(*m_ast);
+		map<YulString, SideEffects> functionSideEffects =
+			SideEffectsPropagator::sideEffects(*m_dialect, CallGraphGenerator::callGraph(*m_ast));
+		(CommonSubexpressionEliminator{*m_dialect, &functionSideEffects})(*m_ast);
 	}
 	else if (m_optimizerStep == "expressionSplitter")
 	{
