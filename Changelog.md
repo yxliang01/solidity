@@ -5,6 +5,7 @@ Language Features:
 
 
 Compiler Features:
+ * SMTChecker: Add loop support to the CHC engine.
 
 
 Bugfixes:
