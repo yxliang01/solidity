@@ -66,6 +66,7 @@ Expression maxValue(solidity::IntegerType const& _type);
 
 void setSymbolicZeroValue(SymbolicVariable const& _variable, EncodingContext& _context);
 void setSymbolicZeroValue(Expression _expr, solidity::TypePointer const& _type, EncodingContext& _context);
+Expression zeroValue(solidity::TypePointer const& _type);
 void setSymbolicUnknownValue(SymbolicVariable const& _variable, EncodingContext& _context);
 void setSymbolicUnknownValue(Expression _expr, solidity::TypePointer const& _type, EncodingContext& _context);
 
