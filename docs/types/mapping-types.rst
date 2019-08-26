@@ -34,7 +34,7 @@ each ``_KeyType``, recursively.
 
 In the example below, the ``MappingExample`` contract defines a public ``balances``
 mapping, with the key type an ``address``, and a value type a ``uint``, mapping
-an unisgned integer value to an Ethereum address. As ``uint`` is a value type, the getter
+an unsigned integer value to an Ethereum address. As ``uint`` is a value type, the getter
 returns a value that matches the type, which you can see in the ``MappingUser``
 contract that returns the value at the specified address.
 
@@ -58,6 +58,34 @@ contract that returns the value at the specified address.
         }
     }
 
+The example below uses a mapping type inside another mapping type. The important
+point to remember are that the mapping inside the mapping is not a return variable,
+but the variable inside it is.
+
+::
+
+    pragma solidity >=0.4.0 <0.7.0;
+
+    contract MappingExample {
+        mapping(address => mapping(address => bool)) public validBalances;
+
+        function transfer(address sender, address recipient) view public {
+            require(validBalances[sender][recipient]);
+        }
+
+        function allowTransfers(address recipient) public {
+            validBalances[msg.sender][recipient] = true;
+        }
+
+    }
+
+    contract MappingUser {
+        function f() public returns (bool) {
+            MappingExample m = new MappingExample();
+            m.transfer(address(this),address(this));
+            return m.validBalances(address(this),address(this));
+        }
+    }
 
 .. note::
   Mappings are not iterable, but it is possible to implement a data structure
