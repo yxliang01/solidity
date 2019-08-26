@@ -6,4 +6,4 @@ contract B {
 }
 contract C is A, B {}
 // ----
-// TypeError: (81-123): Overriding function visibility differs.
+// TypeError: (126-147): Ambiguous base function f() must be overridden.

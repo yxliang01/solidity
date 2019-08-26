@@ -23,6 +23,7 @@
 
 #include <libsolidity/ast/ASTForward.h>
 #include <map>
+#include <list>
 
 namespace langutil
 {
@@ -41,6 +42,19 @@ namespace solidity
 class ContractLevelChecker
 {
 public:
+	/// Helper struct to check overrides
+	struct FunctionInfo
+	{
+		FunctionDefinition const* funcDef;
+		ContractDefinition const* contract;
+
+		bool operator==(FunctionInfo const& _other) const
+		{
+			return this->funcDef == _other.funcDef &&
+				this->contract == _other.contract;
+		}
+	};
+
 	/// @param _errorReporter provides the error logging functionality.
 	explicit ContractLevelChecker(langutil::ErrorReporter& _errorReporter):
 		m_errorReporter(_errorReporter)
@@ -51,6 +65,7 @@ public:
 	bool check(ContractDefinition const& _contract);
 
 private:
+
 	/// Checks that two functions defined in this contract with the same name have different
 	/// arguments and that there is at most one constructor.
 	void checkDuplicateFunctions(ContractDefinition const& _contract);
@@ -58,9 +73,16 @@ private:
 	template <class T>
 	void findDuplicateDefinitions(std::map<std::string, std::vector<T>> const& _definitions, std::string _message);
 	void checkIllegalOverrides(ContractDefinition const& _contract);
-	/// Reports a type error with an appropriate message if overridden function signature differs.
+	FunctionInfo findAndCheckOverride(
+		ContractDefinition const& _derived,
+		FunctionDefinition const& _function,
+		ContractDefinition const& _base
+	);
+	/// Returns false and reports a type error with an appropriate message if
+	/// overridden function signature differs.
 	/// Also stores the direct super function in the AST annotations.
-	void checkFunctionOverride(FunctionDefinition const& function, FunctionDefinition const& super);
+	bool checkFunctionOverride(FunctionDefinition const& _function, FunctionDefinition const& _super);
+	void overrideListError(FunctionDefinition const& function, std::vector<ContractDefinition const*> _secondary, std::string _message1, std::string _message2);
 	void overrideError(FunctionDefinition const& function, FunctionDefinition const& super, std::string message);
 	void checkAbstractFunctions(ContractDefinition const& _contract);
 	void checkBaseConstructorArguments(ContractDefinition const& _contract);
@@ -80,6 +102,10 @@ private:
 	void checkLibraryRequirements(ContractDefinition const& _contract);
 	/// Checks base contracts for ABI compatibility
 	void checkBaseABICompatibility(ContractDefinition const& _contract);
+	/// Checks for ambigious base functions that need to be overridden
+	void checkAmbiguousOverrides(ContractDefinition const& _contract) const;
+	/// Resolves an override list of UserDefinedTypeNames to a list of contracts
+	std::vector<ContractDefinition const*> resolveOverrideList(OverrideSpecifier const& _overrides) const;
 
 	langutil::ErrorReporter& m_errorReporter;
 };

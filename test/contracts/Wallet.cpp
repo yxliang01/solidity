@@ -374,6 +374,9 @@ contract Wallet is multisig, multiowned, daylimit {
 			multiowned(_owners, _required) daylimit(_daylimit) {
 	}
 
+	function changeOwner(address _from, address _to) external override(multiowned, multisig) {
+		multiowned(this).changeOwner(_from, _to);
+	}
 	// destroys the contract sending everything to `_to`.
 	function kill(address payable _to) onlymanyowners(keccak256(msg.data)) external {
 		selfdestruct(_to);
@@ -421,7 +424,7 @@ contract Wallet is multisig, multiowned, daylimit {
 
 	// INTERNAL METHODS
 
-	function clearPending() internal {
+	function clearPending() internal override {
 		uint length = m_pendingIndex.length;
 		for (uint i = 0; i < length; ++i)
 			delete m_txs[m_pendingIndex[i]];
