@@ -40,8 +40,6 @@ class ProtoConverter
 public:
 	ProtoConverter()
 	{
-		m_numLiveVars = 0;
-		m_numVarsPerScope.push(m_numLiveVars);
 		m_numFunctionSets = 0;
 		m_inForBodyScope = false;
 		m_inForInitScope = false;
@@ -55,8 +53,8 @@ public:
 
 private:
 	void visit(BinaryOp const&);
-	void visit(Block const&);
-	void visit(SpecialBlock const&);
+	void visit(Block const&, std::vector<std::string>&& = {});
+	void visit(SpecialBlock const&, std::vector<std::string>&& = {});
 	std::string visit(Literal const&);
 	void visit(VarRef const&);
 	void visit(Expression const&);
@@ -92,6 +90,9 @@ private:
 	void visit(FunctionDefinitionMultiReturnVal const&);
 	void visit(Program const&);
 	void registerFunction(FunctionDefinition const&);
+	void openScope(std::vector<std::string>&& _x);
+	void closeScope();
+	void addToScope(std::vector<std::string>&&);
 
 	std::string createHex(std::string const& _hexBytes);
 
@@ -112,10 +113,13 @@ private:
 	void createFunctionDefAndCall(T const&, unsigned, unsigned, NumFunctionReturns);
 	std::string functionTypeToString(NumFunctionReturns _type);
 
+	/// Creates variable declarations "x_<_startIdx>",...,"x_<_endIdx - 1>"
+	std::vector<std::string> createVars(unsigned _startIdx, unsigned _endIdx);
+
 	template <class T>
 	void registerFunction(T const& _x, NumFunctionReturns _type, unsigned _numOutputParams = 0)
 	{
-		unsigned numInputParams = _x.num_input_params() % modInputParams;
+		unsigned numInputParams = _x.num_input_params() % s_modInputParams;
 		switch (_type)
 		{
 			case NumFunctionReturns::None:
@@ -145,10 +149,10 @@ private:
 	}
 
 	std::ostringstream m_output;
-	// Number of live variables in inner scope of a function
-	std::stack<unsigned> m_numVarsPerScope;
-	// Number of live variables in function scope
-	unsigned m_numLiveVars;
+	/// Scope
+	std::stack<std::set<std::string>> m_scopes;
+	/// Variables
+	std::vector<std::string> m_variables;
 	// Set that is used for deduplicating switch case literals
 	std::stack<std::set<dev::u256>> m_switchLiteralSetPerScope;
 	// Total number of function sets. A function set contains one function of each type defined by
@@ -159,8 +163,8 @@ private:
 	std::vector<unsigned> m_functionVecSingleReturnValue;
 	std::vector<std::pair<unsigned, unsigned>> m_functionVecMultiReturnValue;
 	// mod input/output parameters impose an upper bound on the number of input/output parameters a function may have.
-	static unsigned constexpr modInputParams = 5;
-	static unsigned constexpr modOutputParams = 5;
+	static unsigned constexpr s_modInputParams = 5;
+	static unsigned constexpr s_modOutputParams = 5;
 	// predicate to keep track of for body scope
 	bool m_inForBodyScope;
 	// Index used for naming loop variable of bounded for loops
