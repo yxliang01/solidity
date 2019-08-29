@@ -287,7 +287,6 @@ message FunctionDef {
   required Block block = 3;
 }
 
-// TODO: Make Function definition a Statement
 message Statement {
   oneof stmt_oneof {
     VarDecl             decl            = 1;

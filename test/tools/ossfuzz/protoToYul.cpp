@@ -1001,9 +1001,11 @@ void ProtoConverter::visit(Block const& _x, vector<string>&& _y)
 {
 	openScope(move(_y));
 
-	// Register function declarations in this scope
+	// Register function declarations in this scope unless this
+	// scope belongs to for-init (in which function declarations
+	// are forbidden).
 	for (auto const& statement: _x.statements())
-		if (statement.has_funcdef())
+		if (statement.has_funcdef() && !m_inForInitScope)
 			registerFunction(&statement.funcdef());
 
 	if (_x.statements_size() > 0)
