@@ -45,6 +45,7 @@
 #include <libyul/optimiser/StructuralSimplifier.h>
 #include <libyul/optimiser/RedundantAssignEliminator.h>
 #include <libyul/optimiser/VarNameCleaner.h>
+#include <libyul/optimiser/LoadResolver.h>
 #include <libyul/optimiser/Metrics.h>
 #include <libyul/backends/evm/ConstantOptimiser.h>
 #include <libyul/AsmAnalysis.h>
@@ -121,6 +122,7 @@ void OptimiserSuite::run(
 			ExpressionSimplifier::run(_dialect, ast);
 
 			CommonSubexpressionEliminator{_dialect, &functionSideEffects}(ast);
+			LoadResolver::run(_dialect, ast);
 		}
 
 		{
@@ -136,6 +138,7 @@ void OptimiserSuite::run(
 		functionSideEffects = SideEffectsPropagator::sideEffects(_dialect, CallGraphGenerator::callGraph(ast));
 		{
 			// simplify again
+			LoadResolver::run(_dialect, ast);
 			CommonSubexpressionEliminator{_dialect, &functionSideEffects}(ast);
 			UnusedPruner::runUntilStabilisedOnFullAST(_dialect, ast, reservedIdentifiers);
 		}
@@ -166,6 +169,7 @@ void OptimiserSuite::run(
 			RedundantAssignEliminator::run(_dialect, ast);
 			RedundantAssignEliminator::run(_dialect, ast);
 			CommonSubexpressionEliminator{_dialect, &functionSideEffects}(ast);
+			LoadResolver::run(_dialect, ast);
 		}
 
 		{
@@ -181,6 +185,7 @@ void OptimiserSuite::run(
 			SSATransform::run(ast, dispenser);
 			RedundantAssignEliminator::run(_dialect, ast);
 			RedundantAssignEliminator::run(_dialect, ast);
+			LoadResolver::run(_dialect, ast);
 			ExpressionSimplifier::run(_dialect, ast);
 			StructuralSimplifier{_dialect}(ast);
 			BlockFlattener{}(ast);
