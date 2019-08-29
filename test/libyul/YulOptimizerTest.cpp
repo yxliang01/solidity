@@ -224,7 +224,7 @@ TestCase::TestResult YulOptimizerTest::run(ostream& _stream, string const& _line
 		ForLoopInitRewriter{}(*m_ast);
 		CommonSubexpressionEliminator{*m_dialect}(*m_ast);
 		ExpressionSimplifier::run(*m_dialect, *m_ast);
-		UnusedPruner::runUntilStabilised(*m_dialect, *m_ast);
+		UnusedPruner::runUntilStabilisedOnFullAST(*m_dialect, *m_ast);
 		DeadCodeEliminator{*m_dialect}(*m_ast);
 		ExpressionJoiner::run(*m_ast);
 		ExpressionJoiner::run(*m_ast);
@@ -232,7 +232,7 @@ TestCase::TestResult YulOptimizerTest::run(ostream& _stream, string const& _line
 	else if (m_optimizerStep == "unusedPruner")
 	{
 		disambiguate();
-		UnusedPruner::runUntilStabilised(*m_dialect, *m_ast);
+		UnusedPruner::runUntilStabilisedOnFullAST(*m_dialect, *m_ast);
 	}
 	else if (m_optimizerStep == "deadCodeEliminator")
 	{
@@ -269,7 +269,7 @@ TestCase::TestResult YulOptimizerTest::run(ostream& _stream, string const& _line
 
 		LoadResolver::run(*m_dialect, *m_ast);
 
-		UnusedPruner::runUntilStabilised(*m_dialect, *m_ast);
+		UnusedPruner::runUntilStabilisedOnFullAST(*m_dialect, *m_ast);
 		ExpressionJoiner::run(*m_ast);
 		ExpressionJoiner::run(*m_ast);
 	}
@@ -303,7 +303,7 @@ TestCase::TestResult YulOptimizerTest::run(ostream& _stream, string const& _line
 		// reverse SSA
 		SSAReverser::run(*m_ast);
 		CommonSubexpressionEliminator{*m_dialect}(*m_ast);
-		UnusedPruner::runUntilStabilised(*m_dialect, *m_ast);
+		UnusedPruner::runUntilStabilisedOnFullAST(*m_dialect, *m_ast);
 	}
 	else if (m_optimizerStep == "stackCompressor")
 	{
