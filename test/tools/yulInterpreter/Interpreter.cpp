@@ -165,6 +165,7 @@ void Interpreter::operator()(Block const& _block)
 		if (statement.type() == typeid(FunctionDefinition))
 		{
 			FunctionDefinition const& funDef = boost::get<FunctionDefinition>(statement);
+			solAssert(!m_scopes.back().count(funDef.name), "");
 			m_scopes.back().emplace(funDef.name, &funDef);
 		}
 
