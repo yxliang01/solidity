@@ -5,6 +5,7 @@ Language Features:
 
 
 Compiler Features:
+ * Yul Optimizer: Take side-effect-freeness of user-defined functions into account.
 
 
 Bugfixes:
