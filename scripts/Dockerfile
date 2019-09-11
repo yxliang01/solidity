@@ -2,6 +2,9 @@ FROM alpine AS build
 MAINTAINER chriseth <chris@ethereum.org>
 #Official solidity docker image
 
+# Values: `ON` or `OFF`
+ARG BUILD_LLL="OFF"
+
 #Establish working directory as solidity
 WORKDIR /solidity
 
@@ -18,8 +21,8 @@ ARG BUILD_CONCURRENCY="0"
 
 #Install dependencies, eliminate annoying warnings
 RUN sed -i -E -e 's/include <sys\/poll.h>/include <poll.h>/' /usr/include/boost/asio/detail/socket_types.hpp
-RUN cmake -DCMAKE_BUILD_TYPE=Release -DTESTS=0 -DSOLC_LINK_STATIC=1
-RUN make solc \
+RUN cmake -DCMAKE_BUILD_TYPE=Release -DTESTS=0 -DLLL=${BUILD_LLL} -DSOLC_LINK_STATIC=1 -DLLLC_LINK_STATIC=1
+RUN make solc $([[ ! x"${BUILD_LLL}" = x'OFF' ]] && echo 'lllc')\
     -j$(awk "BEGIN {                                       \
         if (${BUILD_CONCURRENCY} != 0) {                   \
             print(${BUILD_CONCURRENCY});                   \
@@ -32,8 +35,12 @@ RUN make solc \
             }                                              \
         }                                                  \
     }")
-RUN strip solc/solc
+RUN strip solc/solc && ( [[ x"${BUILD_LLL}" = x'OFF' ]] || strip lllc/lllc )
 
-FROM scratch
+FROM scratch AS lllc
+COPY --from=build /solidity/lllc/lllc /usr/bin/lllc
+ENTRYPOINT ["/usr/bin/lllc"]
+
+FROM scratch AS solc
 COPY --from=build /solidity/solc/solc /usr/bin/solc
 ENTRYPOINT ["/usr/bin/solc"]
